@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "startprd": "set NODE_PATH=C:\\Users\\ADMIN\\AppData\\Roaming\\npm\\node_modules && node buzzws.js",
+  "startdev": "set NODE_PATH=C:\\Users\\ADMIN\\AppData\\Roaming\\npm\\node_modules && nodemon buzzws.js"
   },
   "devDependencies": {
     "vite": "^5.4.2"

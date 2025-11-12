@@ -1,470 +1,213 @@
-// Initialize the application
-document.addEventListener('DOMContentLoaded', function() {
-  initializeTheme();
-  initializeApp();
-});
+// const { OAuth2Client } = require('google-auth-library');
+// const client = new OAuth2Client("YOUR_GOOGLE_CLIENT_ID");
 
-// Theme Management
-function initializeTheme() {
-  // Set dark theme as default
-  const savedTheme = localStorage.getItem('theme') || 'dark';
-  document.documentElement.setAttribute('data-theme', savedTheme);
-  updateThemeIcon(savedTheme);
-  
-  // Setup theme toggle
-  setupThemeToggle();
-}
+// app.post('/auth/google', async (req, res) => {
+//     const { token } = req.body;
+//     const ticket = await client.verifyIdToken({
+//         idToken: token,
+//         audience: "YOUR_GOOGLE_CLIENT_ID",
+//     });
+//     const payload = ticket.getPayload();
+//     // payload contains email, name, picture
+//     console.log(payload);
+//     // Save user in DB (sign up) or login if exists
+//     res.json({ user: payload });
+// });
 
-function setupThemeToggle() {
-  const themeToggle = document.getElementById('theme-toggle');
-  if (!themeToggle) return;
+async function handleSendMessage(response, ws) {
+  const jsonData = response.phpOutput;
+  let sentCount = 0;
   
-  themeToggle.addEventListener('click', () => {
-    const currentTheme = document.documentElement.getAttribute('data-theme');
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('theme', newTheme);
-    updateThemeIcon(newTheme);
-    
-    showToast(`Switched to ${newTheme} theme`, 'info');
-  });
-}
-
-function updateThemeIcon(theme) {
-  const themeToggle = document.getElementById('theme-toggle');
-  if (!themeToggle) return;
-  
-  const icon = themeToggle.querySelector('i');
-  if (theme === 'dark') {
-    icon.className = 'fas fa-sun';
+  if (jsonData && jsonData.terminate_session && jsonData.terminate_session.terminate_session) {
+    const terminate_session = jsonData.terminate_session.terminate_session;
+    // const sessionIds = terminate_session.map(row => row.SessnId);
+    const terminateArray = Array.isArray(terminate_session)
+  ? terminate_session
+  : terminate_session
+  ? Object.values(terminate_session)
+  : [];
+  const sessionIds = terminateArray.map(row => row.SessnId);
+    console.log(`Found ${sessionIds.length} terminate_session:`, sessionIds);
+    for (const session of terminateArray) {
+      const targetWs = sessionWsMap.get(session.SessnId);
+      if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+        const tailoredResponse = {
+          phpOutput: {
+            terminate_session: {
+              terminate_session: [session], // Send only the matching session row
+            },
+          },
+        };
+        const activejson = JSON.stringify(tailoredResponse);
+        targetWs.send(activejson);
+        sentCount++;
+        console.log(`Sent message to session ${session.SessnId} for receiver ${session.User}`);
+      } else {
+        console.log(`No active WebSocket for session ${session.SessnId} for receiver ${session.User}`);
+      }
+    }
   } else {
-    icon.className = 'fas fa-moon';
+    console.log('terminate_session not found or invalid');
   }
-}
 
-function initializeApp() {
-  updateDateTime();
-  setInterval(updateDateTime, 60000); // Update every minute
-  
-  setupNavigation();
-  setupEventListeners();
-  setupModalHandlers();
-  setupMobileMenu();
-  
-  // Add fade-in animation to main content
-  document.querySelector('.main-content').classList.add('fade-in');
-}
-
-// Update date and time in header
-function updateDateTime() {
-  const dateTimeElement = document.getElementById('current-date');
-  const now = new Date();
-  
-  const options = {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  };
-  
-  const formattedDate = now.toLocaleDateString('en-US', options);
-  dateTimeElement.textContent = formattedDate.replace(' at ', ' • ');
-}
-
-// Setup navigation between sections
-function setupNavigation() {
-  const navItems = document.querySelectorAll('.nav-item');
-  const contentSections = document.querySelectorAll('.content-section');
-  
-  navItems.forEach(item => {
-    item.addEventListener('click', () => {
-      // Remove active class from all nav items
-      navItems.forEach(navItem => navItem.classList.remove('active'));
-      
-      // Add active class to clicked item
-      item.classList.add('active');
-      
-      // Hide all content sections
-      contentSections.forEach(section => section.classList.add('hidden'));
-      
-      // Show target section
-      const targetTab = item.getAttribute('data-tab');
-      const targetSection = document.getElementById(targetTab);
-      if (targetSection) {
-        targetSection.classList.remove('hidden');
-        targetSection.classList.add('slide-in');
-        
-        // Remove animation class after animation completes
-        setTimeout(() => {
-          targetSection.classList.remove('slide-in');
-        }, 300);
+  if (jsonData && jsonData.get_receiver_sessions && jsonData.get_receiver_sessions.receiver_sessions) {
+    const receiver_sessions = jsonData.get_receiver_sessions.receiver_sessions;
+    // const sessionIds = receiver_sessions.map(row => row.SessnId);
+    const receiverArray = Array.isArray(receiver_sessions)
+  ? receiver_sessions
+  : receiver_sessions
+  ? Object.values(receiver_sessions)
+  : [];
+  const sessionIds = receiverArray.map(row => row.SessnId);
+    console.log(`Found ${sessionIds.length} receiver_sessions:`, sessionIds);
+    for (const session of receiverArray) {
+      const targetWs = sessionWsMap.get(session.SessnId);
+      if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+        const tailoredResponse = {
+          // ...response,
+          phpOutput: {
+            // ...jsonData,
+            get_receiver_sessions: {
+              ...jsonData.get_receiver_sessions,
+              receiver_sessions: [session], // Send only the matching session row
+            },
+          },
+        };
+        const activejson = JSON.stringify(tailoredResponse);
+        targetWs.send(activejson);
+        sentCount++;
+        console.log(`Sent message to session ${session.SessnId} for receiver ${session.User}`);
+      } else {
+        console.log(`No active WebSocket for session ${session.SessnId} for receiver ${session.User}`);
       }
-    });
-  });
-}
-
-// Setup event listeners for buttons and interactions
-function setupEventListeners() {
-  // Meet Now button
-  document.getElementById('meet-now')?.addEventListener('click', () => {
-    simulateMeetingStart('instant');
-  });
-  
-  // Schedule Meeting button
-  document.getElementById('schedule-meeting')?.addEventListener('click', () => {
-    openModal('meeting-modal');
-  });
-  
-  // Broadcast Now button
-  document.getElementById('broadcast-now')?.addEventListener('click', () => {
-    simulateWebinarStart('instant');
-  });
-  
-  // Schedule Webinar button
-  document.getElementById('schedule-webinar')?.addEventListener('click', () => {
-    openModal('meeting-modal');
-  });
-  
-  // Start Meeting button
-  document.getElementById('start-meeting')?.addEventListener('click', () => {
-    simulateMeetingStart('personal-room');
-  });
-  
-  // Copy URL button
-  document.getElementById('copy-url')?.addEventListener('click', () => {
-    copyToClipboard('https://meet.buzzmeet.com/personal-room-xyz');
-  });
-  
-  // Buy Now button
-  document.querySelector('.btn-buy-now')?.addEventListener('click', () => {
-    showToast('Redirecting to billing...', 'info');
-  });
-  
-  // Department dropdown
-  document.querySelector('.department-dropdown')?.addEventListener('click', () => {
-    showToast('Department selection coming soon...', 'info');
-  });
-  
-  // Apps menu
-  document.querySelector('.apps-menu')?.addEventListener('click', () => {
-    showToast('Apps menu coming soon...', 'info');
-  });
-}
-
-// Mobile menu functionality
-function setupMobileMenu() {
-  // Add mobile menu button to header if it doesn't exist
-  const headerLeft = document.querySelector('.header-left');
-  if (headerLeft && !document.querySelector('.mobile-menu-btn')) {
-    const menuBtn = document.createElement('button');
-    menuBtn.className = 'mobile-menu-btn';
-    menuBtn.innerHTML = '<i class="fas fa-bars"></i>';
-    headerLeft.insertBefore(menuBtn, headerLeft.firstChild);
-    
-    // Add event listener
-    menuBtn.addEventListener('click', toggleMobileMenu);
-  }
-  
-  // Close menu when clicking outside
-  document.addEventListener('click', (e) => {
-    const sidebar = document.querySelector('.sidebar');
-    const menuBtn = document.querySelector('.mobile-menu-btn');
-    
-    if (sidebar && sidebar.classList.contains('open') && 
-        !sidebar.contains(e.target) && 
-        !menuBtn.contains(e.target)) {
-      sidebar.classList.remove('open');
     }
-  });
-  
-  // Close menu when selecting nav item on mobile
-  const navItems = document.querySelectorAll('.nav-item');
-  navItems.forEach(item => {
-    item.addEventListener('click', () => {
-      if (window.innerWidth <= 768) {
-        document.querySelector('.sidebar').classList.remove('open');
+  } else if (jsonData && jsonData.get_active_sessions && jsonData.get_online_users && jsonData.get_active_sessions.active_sessions && jsonData.get_online_users.online_users) {
+    const active_sessions = jsonData.get_active_sessions.active_sessions;
+    const online_users = jsonData.get_online_users.online_users;
+    const my_sessions = jsonData.get_my_sessions.my_sessions;
+    // const sessionIds = active_sessions.map(row => row.SessnId);
+    const sessionArray = Array.isArray(active_sessions)
+    ? active_sessions
+    : active_sessions
+    ? Object.values(active_sessions) // convert object to array if needed
+    : [];
+    const sessionIds = sessionArray.map(row => row.SessnId);
+    console.log(`Found ${sessionIds.length} active_sessions:`, sessionIds);
+    for (const session of sessionArray) {
+      const targetWs = sessionWsMap.get(session.SessnId);
+      if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+        // const matched_online_users = online_users.filter(user => user.login === session.User);
+        const matched_online_users = Array.isArray(online_users)
+  ? online_users.filter(u => u.login === session.User)
+  : Object.values(online_users).filter(u => u.login === session.User);
+
+        // const matched_my_sessions = my_sessions.filter(user => user.User === session.User);
+        const matched_my_sessions = Array.isArray(my_sessions)
+  ? my_sessions.filter(user => user.User === session.User)
+  : Object.values(my_sessions).filter(user => user.User === session.User);
+
+        const tailoredResponse = {
+          ...response,
+          phpOutput: {
+            // ...jsonData,
+            get_active_sessions: {
+              active_sessions: [session], // Send only the matching session row
+              online_users: matched_online_users,
+              my_sessions: matched_my_sessions
+            },
+          },
+        };
+        const activejson = JSON.stringify(tailoredResponse);
+        targetWs.send(activejson);
+        sentCount++;
+        console.log(`Sent message to session ${session.SessnId} for receiver ${session.User}`);
+      } else {
+        console.log(`No active WebSocket for session ${session.SessnId} for receiver ${session.User}`);
       }
-    });
-  });
-}
-
-function toggleMobileMenu() {
-  const sidebar = document.querySelector('.sidebar');
-  sidebar.classList.toggle('open');
-}
-
-// Modal handling
-function setupModalHandlers() {
-  const modal = document.getElementById('meeting-modal');
-  const closeBtn = modal?.querySelector('.close-modal');
-  const cancelBtn = modal?.querySelector('.cancel-btn');
-  const form = modal?.querySelector('#meeting-form');
-  
-  closeBtn?.addEventListener('click', () => closeModal('meeting-modal'));
-  cancelBtn?.addEventListener('click', () => closeModal('meeting-modal'));
-  
-  // Close modal when clicking outside
-  modal?.addEventListener('click', (e) => {
-    if (e.target === modal) {
-      closeModal('meeting-modal');
     }
-  });
-  
-  // Handle form submission
-  form?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    handleMeetingSchedule(form);
-  });
-  
-  // Close modal with Escape key
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      closeModal('meeting-modal');
-    }
-  });
-}
-
-function openModal(modalId) {
-  const modal = document.getElementById(modalId);
-  if (modal) {
-    modal.classList.remove('hidden');
-    modal.classList.add('fade-in');
-    
-    // Focus on first input
-    const firstInput = modal.querySelector('input');
-    if (firstInput) {
-      setTimeout(() => firstInput.focus(), 100);
-    }
-  }
-}
-
-function closeModal(modalId) {
-  const modal = document.getElementById(modalId);
-  if (modal) {
-    modal.classList.add('hidden');
-    modal.classList.remove('fade-in');
-  }
-}
-
-function handleMeetingSchedule(form) {
-  const formData = new FormData(form);
-  const meetingData = {
-    title: form.querySelector('input[type="text"]').value,
-    datetime: form.querySelector('input[type="datetime-local"]').value,
-    description: form.querySelector('textarea').value
-  };
-  
-  // Simulate API call
-  showLoading();
-  
-  setTimeout(() => {
-    hideLoading();
-    closeModal('meeting-modal');
-    showToast(`Meeting "${meetingData.title}" scheduled successfully!`, 'success');
-    
-    // Reset form
-    form.reset();
-  }, 1500);
-}
-
-// Simulate meeting start
-function simulateMeetingStart(type) {
-  const messages = {
-    'instant': 'Starting instant meeting...',
-    'personal-room': 'Joining personal room...'
-  };
-  
-  showLoading();
-  showToast(messages[type], 'info');
-  
-  setTimeout(() => {
-    hideLoading();
-    showToast('Meeting room ready! 🎥', 'success');
-  }, 2000);
-}
-
-// Simulate webinar start
-function simulateWebinarStart(type) {
-  showLoading();
-  showToast('Preparing webinar broadcast...', 'info');
-  
-  setTimeout(() => {
-    hideLoading();
-    showToast('Webinar broadcast started! 📺', 'success');
-  }, 2000);
-}
-
-// Copy to clipboard functionality
-function copyToClipboard(text) {
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(text).then(() => {
-      showToast('URL copied to clipboard!', 'success');
-    }).catch(() => {
-      fallbackCopyToClipboard(text);
-    });
   } else {
-    fallbackCopyToClipboard(text);
+    console.log('receiver_sessions/active_sessions not found or invalid');
   }
-}
+  
+  if (jsonData && jsonData.get_sender_messages && jsonData.get_sender_sessions && jsonData.get_sender_messages.sender_messages && jsonData.get_sender_sessions.sender_sessions) {
+    const active_sessions = jsonData.get_sender_sessions.sender_sessions;
+    const online_users = jsonData.get_sender_messages.sender_messages
+    // const sessionIds = active_sessions.map(row => row.SessnId);
+    const sessionArray = Array.isArray(active_sessions)
+    ? active_sessions
+    : active_sessions
+    ? Object.values(active_sessions) // convert object to array if needed
+    : [];
+    const sessionIds = sessionArray.map(row => row.SessnId);
 
-function fallbackCopyToClipboard(text) {
-  const textArea = document.createElement('textarea');
-  textArea.value = text;
-  textArea.style.position = 'fixed';
-  textArea.style.left = '-999999px';
-  textArea.style.top = '-999999px';
-  document.body.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
-  
-  try {
-    document.execCommand('copy');
-    showToast('URL copied to clipboard!', 'success');
-  } catch (err) {
-    showToast('Failed to copy URL', 'error');
-  }
-  
-  document.body.removeChild(textArea);
-}
-
-// Toast notifications
-function showToast(message, type = 'info') {
-  // Remove existing toast
-  const existingToast = document.querySelector('.toast');
-  if (existingToast) {
-    existingToast.remove();
-  }
-  
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = message;
-  
-  document.body.appendChild(toast);
-  
-  // Trigger animation
-  setTimeout(() => {
-    toast.classList.add('show');
-  }, 100);
-  
-  // Auto remove after 3 seconds
-  setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => {
-      if (toast.parentNode) {
-        toast.remove();
+    console.log(`Found ${sessionIds.length} sender_sessions:`, sessionIds);
+    for (const session of sessionArray) {
+      const targetWs = sessionWsMap.get(session.SessnId);
+      if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+        // const matched_online_users = online_users.filter(user => user.User === session.User);
+        const matched_online_users = Array.isArray(online_users)
+  ? online_users.filter(u => u.User === session.User)
+  : Object.values(online_users).filter(u => u.User === session.User);
+        const tailoredResponse = {
+          ...response,
+          phpOutput: {
+            // ...jsonData,
+            get_sender_sessions: {
+              sender_sessions: [session], // Send only the matching session row
+              sender_messages: matched_online_users,
+            },
+          },
+        };
+        const activejson = JSON.stringify(tailoredResponse);
+        targetWs.send(activejson);
+        sentCount++;
+        console.log(`To sender_messages for sender_sessions ${session.SessnId} for sender_user ${session.User}`);
+      } else {
+        console.log(`No sender_messages for sender_sessions ${session.SessnId} for sender_user ${session.User}`);
       }
-    }, 300);
-  }, 3000);
-}
-
-// Loading states
-function showLoading() {
-  const buttons = document.querySelectorAll('.btn-primary, .btn-secondary');
-  buttons.forEach(btn => {
-    if (!btn.querySelector('.loading')) {
-      btn.disabled = true;
-      btn.style.opacity = '0.7';
-      
-      const originalText = btn.textContent;
-      btn.setAttribute('data-original-text', originalText);
-      
-      const loader = document.createElement('span');
-      loader.className = 'loading';
-      btn.innerHTML = '';
-      btn.appendChild(loader);
     }
-  });
-}
-
-function hideLoading() {
-  const buttons = document.querySelectorAll('.btn-primary, .btn-secondary');
-  buttons.forEach(btn => {
-    const originalText = btn.getAttribute('data-original-text');
-    if (originalText) {
-      btn.disabled = false;
-      btn.style.opacity = '1';
-      btn.textContent = originalText;
-      btn.removeAttribute('data-original-text');
+  } else if (jsonData && jsonData.get_deliver_messages && jsonData.get_deliver_sessions && jsonData.get_deliver_messages.deliver_messages && jsonData.get_deliver_sessions.deliver_sessions) {
+    const active_sessions = jsonData.get_deliver_sessions.deliver_sessions;
+    const online_users = jsonData.get_deliver_messages.deliver_messages
+    // const sessionIds = active_sessions.map(row => row.SessnId);
+    const sessionArray = Array.isArray(active_sessions)
+    ? active_sessions
+    : active_sessions
+    ? Object.values(active_sessions) // convert object to array if needed
+    : [];
+    const sessionIds = sessionArray.map(row => row.SessnId);
+    console.log(`Found ${sessionIds.length} deliver_sessions:`, sessionIds);
+    for (const session of sessionArray) {
+      const targetWs = sessionWsMap.get(session.SessnId);
+      if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+        // const matched_online_users = online_users.filter(user => user.User === session.User);
+        const matched_online_users = Array.isArray(online_users)
+  ? online_users.filter(u => u.User === session.User)
+  : Object.values(online_users).filter(u => u.User === session.User);
+        const tailoredResponse = {
+          ...response,
+          phpOutput: {
+            // ...jsonData,
+            get_sender_sessions: {
+              sender_sessions: [session], // Send only the matching session row
+              sender_messages: matched_online_users,
+            },
+          },
+        };
+        const activejson = JSON.stringify(tailoredResponse);
+        targetWs.send(activejson);
+        sentCount++;
+        console.log(`To deliver_messages for deliver_sessions ${session.SessnId} for deliver_user ${session.User}`);
+      } else {
+        console.log(`No deliver_messages for deliver_sessions ${session.SessnId} for deliver_user ${session.User}`);
+      }
     }
-  });
+  } else {
+    console.log('sender_sessions/deliver_sessions not found or invalid');
+  }
+  response.message = `Message sent to ${sentCount} active sessions`;
+  return response;
 }
 
-// Settings handlers
-function setupSettingsHandlers() {
-  const toggles = document.querySelectorAll('.toggle input[type="checkbox"]');
-  
-  toggles.forEach(toggle => {
-    toggle.addEventListener('change', (e) => {
-      const setting = e.target.nextElementSibling.textContent;
-      const isEnabled = e.target.checked;
-      
-      showToast(`${setting} ${isEnabled ? 'enabled' : 'disabled'}`, 'info');
-    });
-  });
-}
-
-// Mobile sidebar toggle (for future enhancement)
-function setupMobileSidebar() {
-  // This would be for mobile menu toggle functionality
-  const menuButton = document.querySelector('.mobile-menu-btn');
-  const sidebar = document.querySelector('.sidebar');
-  
-  if (menuButton && sidebar) {
-    menuButton.addEventListener('click', () => {
-      sidebar.classList.toggle('open');
-    });
-  }
-}
-
-// Keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-  // Ctrl/Cmd + M for new meeting
-  if ((e.ctrlKey || e.metaKey) && e.key === 'm') {
-    e.preventDefault();
-    simulateMeetingStart('instant');
-  }
-  
-  // Ctrl/Cmd + S for schedule
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-    e.preventDefault();
-    openModal('meeting-modal');
-  }
-});
-
-// Error handling
-window.addEventListener('error', (e) => {
-  console.error('Application error:', e.error);
-  showToast('Something went wrong. Please refresh the page.', 'error');
-});
-
-// Initialize additional features
-setTimeout(() => {
-  setupSettingsHandlers();
-}, 1000);
-
-// Handle window resize
-window.addEventListener('resize', () => {
-  if (window.innerWidth > 768) {
-    document.querySelector('.sidebar').classList.remove('open');
-  }
-});
-
-// Keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-  // Toggle theme with Ctrl/Cmd + T
-  if ((e.ctrlKey || e.metaKey) && e.key === 't') {
-    e.preventDefault();
-    document.getElementById('theme-toggle')?.click();
-  }
-  
-  // Toggle mobile menu with Escape
-  if (e.key === 'Escape') {
-    const sidebar = document.querySelector('.sidebar');
-    if (sidebar.classList.contains('open')) {
-      sidebar.classList.remove('open');
-    }
-  }
-});
+// Export the handleSendMessage function
+export { handleSendMessage };
