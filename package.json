@@ -8,9 +8,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "startprd": "set NODE_PATH=C:\\Users\\ADMIN\\AppData\\Roaming\\npm\\node_modules && node buzzws.js",
-  "startdev": "set NODE_PATH=C:\\Users\\ADMIN\\AppData\\Roaming\\npm\\node_modules && nodemon buzzws.js"
+    "startdev": "set NODE_PATH=C:\\Users\\ADMIN\\AppData\\Roaming\\npm\\node_modules && nodemon buzzws.js"
   },
   "devDependencies": {
     "vite": "^5.4.2"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "uuid": "^13.0.0"
   }
 }
